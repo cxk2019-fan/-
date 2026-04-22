@@ -143,6 +143,19 @@
             border: 2px dashed var(--primary-pink);
         }
         
+        /* 当前时间显示 */
+        .current-time {
+            font-size: 1.1rem;
+            color: var(--star-pink);
+            background: rgba(255, 255, 255, 0.7);
+            padding: 8px 20px;
+            border-radius: 20px;
+            display: inline-block;
+            border: 2px dashed var(--primary-pink);
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        
         /* 娃娃机主体 - 移动端优化 */
         .claw-machine-container {
             background: linear-gradient(180deg, #FFB7C5 0%, #FF8E9E 100%);
@@ -560,6 +573,18 @@
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1) !important;
         }
         
+        /* 当前可打卡状态 */
+        .sleep-card.active {
+            border: 3px solid currentColor;
+            box-shadow: 0 0 20px currentColor;
+            animation: pulse-active 2s infinite;
+        }
+        
+        @keyframes pulse-active {
+            0%, 100% { box-shadow: 0 0 20px currentColor; }
+            50% { box-shadow: 0 0 30px currentColor; }
+        }
+        
         .card-icon {
             font-size: 2.2rem;
             margin-bottom: 8px;
@@ -580,6 +605,15 @@
         .card-effect {
             font-size: 0.8rem;
             opacity: 0.9;
+        }
+        
+        /* 时间提示 */
+        .time-hint {
+            text-align: center;
+            color: var(--star-pink);
+            font-size: 1.1rem;
+            margin: 10px 0;
+            font-weight: bold;
         }
         
         /* 动态提示 - 移动端优化 */
@@ -869,28 +903,6 @@
         .flashing {
             animation: flash 0.5s;
         }
-        
-        /* 打卡成功特效 */
-        .checkin-success {
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .checkin-success::after {
-            content: '';
-            position: absolute;
-            top: -50%;
-            left: -50%;
-            width: 200%;
-            height: 200%;
-            background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.6), transparent);
-            animation: successShine 1.5s forwards;
-        }
-        
-        @keyframes successShine {
-            0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
-            100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
-        }
     </style>
 </head>
 <body>
@@ -903,6 +915,7 @@
             <h1><span class="title-decoration-text">🎀</span> 抓娃娃计划 <span class="title-decoration-text">🎀</span></h1>
             <div class="subtitle">21天养成早睡好习惯</div>
             <div class="theme-text">罗思维的睡梦星球</div>
+            <div class="current-time" id="currentTime"></div>
         </div>
         
         <!-- 娃娃机主体 -->
@@ -957,6 +970,11 @@
             <div class="coin-grid" id="coinGrid">
                 <!-- 21个投币孔将由JS生成 -->
             </div>
+        </div>
+        
+        <!-- 当前可打卡提示 -->
+        <div class="time-hint" id="timeHint">
+            请选择当前时间对应的睡眠时段打卡
         </div>
         
         <!-- 睡眠时段卡片 - 点击直接打卡 -->
@@ -1036,7 +1054,7 @@
             history: []
         };
         
-        // 睡眠时段配置
+        // 睡眠时段配置 - 简化时间判断逻辑
         const sleepTypes = [
             {
                 type: 'perfect',
@@ -1142,6 +1160,11 @@
                 icon: '⏰',
                 title: '今日已打卡',
                 text: '今天已经打卡过了哦，明天再来吧！'
+            },
+            notInTime: {
+                icon: '⏰',
+                title: '不在打卡时间',
+                text: '当前时间不在这个睡眠时段内，请选择正确的时段打卡！'
             }
         };
         
@@ -1154,6 +1177,111 @@
             loadData();
             updateUI();
             updateDynamicHint();
+            updateCurrentTime();
+            updateCardAvailability();
+            
+            // 每秒更新当前时间
+            setInterval(() => {
+                updateCurrentTime();
+            }, 1000);
+            
+            // 每分钟更新卡片可用性
+            setInterval(() => {
+                updateCardAvailability();
+            }, 60000);
+        }
+        
+        // 更新当前时间显示
+        function updateCurrentTime() {
+            const now = new Date();
+            const hours = now.getHours().toString().padStart(2, '0');
+            const minutes = now.getMinutes().toString().padStart(2, '0');
+            const seconds = now.getSeconds().toString().padStart(2, '0');
+            document.getElementById('currentTime').textContent = `当前时间: ${hours}:${minutes}:${seconds}`;
+        }
+        
+        // 检查当前时间是否在指定时间段内
+        function isCurrentTimeInRange(type) {
+            const now = new Date();
+            const currentHour = now.getHours();
+            const currentMinute = now.getMinutes();
+            
+            // 简化时间判断逻辑
+            switch(type) {
+                case 'perfect':
+                    // 准时区：23:30前
+                    if (currentHour < 23) return true;
+                    if (currentHour === 23 && currentMinute < 30) return true;
+                    return false;
+                    
+                case 'safe':
+                    // 安全区：23:30-24:00
+                    if (currentHour === 23 && currentMinute >= 30) return true;
+                    if (currentHour === 0 && currentMinute === 0) return true; // 24:00就是0:00
+                    return false;
+                    
+                case 'late':
+                    // 迟到区：00:00-00:30
+                    if (currentHour === 0 && currentMinute < 30) return true;
+                    return false;
+                    
+                case 'danger':
+                    // 高危区：00:30-01:00
+                    if (currentHour === 0 && currentMinute >= 30) return true;
+                    if (currentHour === 1 && currentMinute === 0) return true;
+                    return false;
+                    
+                case 'fail':
+                    // 失效区：01:00后
+                    if (currentHour >= 1) return true;
+                    return false;
+                    
+                default:
+                    return false;
+            }
+        }
+        
+        // 更新卡片可用性
+        function updateCardAvailability() {
+            const cards = document.querySelectorAll('.sleep-card');
+            let activeCards = 0;
+            
+            cards.forEach(card => {
+                const cardType = card.dataset.type;
+                
+                // 如果今天已经打卡，禁用所有卡片
+                if (appData.todayChecked) {
+                    card.classList.remove('active');
+                    card.classList.add('disabled');
+                    card.style.cursor = 'not-allowed';
+                    return;
+                }
+                
+                // 检查当前时间是否在卡片对应的时间段内
+                if (isCurrentTimeInRange(cardType)) {
+                    card.classList.remove('disabled');
+                    card.classList.add('active');
+                    card.style.cursor = 'pointer';
+                    activeCards++;
+                } else {
+                    card.classList.remove('active');
+                    card.classList.add('disabled');
+                    card.style.cursor = 'not-allowed';
+                }
+            });
+            
+            // 更新时间提示
+            const timeHint = document.getElementById('timeHint');
+            if (appData.todayChecked) {
+                timeHint.textContent = '今天已经打卡过了，如需重新打卡请点击"重置当天"按钮';
+                timeHint.style.color = '#888';
+            } else if (activeCards > 0) {
+                timeHint.textContent = '请选择当前时间对应的睡眠时段打卡';
+                timeHint.style.color = 'var(--star-pink)';
+            } else {
+                timeHint.textContent = '当前时间没有可用的睡眠时段，请等待合适的睡眠时间';
+                timeHint.style.color = '#888';
+            }
         }
         
         // 创建背景漂浮元素
@@ -1224,18 +1352,21 @@
                     <div class="card-effect">${type.effect}</div>
                 `;
                 
-                // 添加悬停提示
-                card.addEventListener('mouseenter', () => {
-                    showCardTooltip(card, type.description);
+                // 添加点击事件
+                card.addEventListener('click', () => {
+                    handleCardClick(type.type);
                 });
                 
                 // 触摸设备优化
                 card.addEventListener('touchstart', (e) => {
                     e.preventDefault();
-                    card.style.transform = 'scale(0.98)';
+                    if (!card.classList.contains('disabled')) {
+                        card.style.transform = 'scale(0.98)';
+                    }
                 });
                 
-                card.addEventListener('touchend', () => {
+                card.addEventListener('touchend', (e) => {
+                    e.preventDefault();
                     card.style.transform = '';
                 });
                 
@@ -1243,63 +1374,26 @@
             });
         }
         
-        // 显示卡片悬停提示
-        function showCardTooltip(card, text) {
-            // 只在非触摸设备显示悬停提示
-            if ('ontouchstart' in window) return;
+        // 处理卡片点击
+        function handleCardClick(type) {
+            // 如果今天已经打卡
+            if (appData.todayChecked) {
+                showModal('alreadyChecked');
+                return;
+            }
             
-            const tooltip = document.createElement('div');
-            tooltip.style.cssText = `
-                position: absolute;
-                background: rgba(255, 183, 197, 0.95);
-                color: white;
-                padding: 8px 12px;
-                border-radius: 8px;
-                font-size: 0.8rem;
-                z-index: 1000;
-                max-width: 180px;
-                pointer-events: none;
-                border: 2px solid white;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-            `;
-            tooltip.textContent = text;
+            // 检查当前时间是否在对应的时间段内
+            if (!isCurrentTimeInRange(type)) {
+                showModal('notInTime');
+                return;
+            }
             
-            const rect = card.getBoundingClientRect();
-            tooltip.style.left = rect.left + 'px';
-            tooltip.style.top = (rect.top - 45) + 'px';
-            
-            document.body.appendChild(tooltip);
-            
-            card.addEventListener('mouseleave', () => {
-                tooltip.remove();
-            }, { once: true });
+            appData.selectedType = type;
+            handleCheckin();
         }
         
         // 设置事件监听器
         function setupEventListeners() {
-            // 睡眠卡片选择 - 点击直接打卡
-            document.querySelectorAll('.sleep-card').forEach(card => {
-                card.addEventListener('click', () => {
-                    if (appData.todayChecked) {
-                        showModal('alreadyChecked');
-                        return;
-                    }
-                    
-                    appData.selectedType = card.dataset.type;
-                    handleCheckin();
-                });
-                
-                // 触摸设备优化
-                card.addEventListener('touchstart', (e) => {
-                    if (appData.todayChecked) return;
-                    e.currentTarget.style.transform = 'scale(0.95)';
-                }, { passive: false });
-                
-                card.addEventListener('touchend', (e) => {
-                    e.currentTarget.style.transform = '';
-                });
-            });
-            
             // 使用假条按钮
             document.getElementById('ticketBtn').addEventListener('click', useTicket);
             
@@ -1577,17 +1671,8 @@
             // 更新娃娃位置
             updateDollPosition();
             
-            // 如果今天已经打卡，禁用所有卡片
-            const cards = document.querySelectorAll('.sleep-card');
-            cards.forEach(card => {
-                if (appData.todayChecked) {
-                    card.classList.add('disabled');
-                    card.style.cursor = 'not-allowed';
-                } else {
-                    card.classList.remove('disabled');
-                    card.style.cursor = 'pointer';
-                }
-            });
+            // 更新卡片可用性
+            updateCardAvailability();
             
             // 重置选择状态
             appData.selectedType = null;
@@ -1676,9 +1761,8 @@
                 }, 500);
                 
                 const todayType = appData.todayType;
-                const sleepType = sleepTypes.find(t => t.type === todayType);
                 
-                if (sleepType) {
+                if (todayType) {
                     switch(todayType) {
                         case 'perfect':
                             appData.currentStreak = Math.max(0, appData.currentStreak - 2);
